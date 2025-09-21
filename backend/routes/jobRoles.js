@@ -10,7 +10,8 @@ const router = express.Router();
 router.get('/', auth, async (req, res) => {
   try {
     const { active } = req.query;
-    const filter = active === 'true' ? { isActive: true } : {};
+    const filter = { createdBy: req.user.id };
+    if (active === 'true') filter.isActive = true;
     
     const jobRoles = await JobRole.find(filter).sort({ createdAt: -1 });
     
@@ -18,7 +19,8 @@ router.get('/', auth, async (req, res) => {
     const jobRolesWithStats = await Promise.all(
       jobRoles.map(async (jobRole) => {
         const candidateCount = await Candidate.countDocuments({
-          bestMatchJobRole: jobRole._id
+          bestMatchJobRole: jobRole._id,
+          createdBy: req.user.id
         });
         
         return {
@@ -47,9 +49,15 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Job role not found' });
     }
 
+    // Ownership check
+    if (String(jobRole.createdBy) !== String(req.user.id)) {
+      return res.status(404).json({ message: 'Job role not found' });
+    }
+
     // Get candidates for this job role
     const candidates = await Candidate.find({
-      bestMatchJobRole: jobRole._id
+      bestMatchJobRole: jobRole._id,
+      createdBy: req.user.id
     }).select('name email bestMatchScore status').sort({ bestMatchScore: -1 });
 
     res.json({
@@ -75,8 +83,8 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
-    // Check if job role with same title exists
-    const existingJobRole = await JobRole.findOne({ title });
+    // Check if job role with same title exists for this user
+    const existingJobRole = await JobRole.findOne({ title, createdBy: req.user.id });
     if (existingJobRole) {
       return res.status(400).json({ 
         message: 'Job role with this title already exists' 
@@ -89,14 +97,15 @@ router.post('/', auth, async (req, res) => {
       description,
       requiredSkills,
       experienceLevel: experienceLevel || 'mid',
-      department
+      department,
+      createdBy: req.user.id
     });
 
     await jobRole.save();
 
     // Recalculate scores for all candidates
-    const candidates = await Candidate.find({});
-    const jobRoles = await JobRole.find({ isActive: true });
+    const candidates = await Candidate.find({ createdBy: req.user.id });
+    const jobRoles = await JobRole.find({ isActive: true, createdBy: req.user.id });
 
     for (const candidate of candidates) {
       const candidateData = {
@@ -135,9 +144,14 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Job role not found' });
     }
 
+    // Ownership check
+    if (String(jobRole.createdBy) !== String(req.user.id)) {
+      return res.status(404).json({ message: 'Job role not found' });
+    }
+
     // Check if title is being changed and if new title already exists
     if (title && title !== jobRole.title) {
-      const existingJobRole = await JobRole.findOne({ title, _id: { $ne: req.params.id } });
+      const existingJobRole = await JobRole.findOne({ title, createdBy: req.user.id, _id: { $ne: req.params.id } });
       if (existingJobRole) {
         return res.status(400).json({ 
           message: 'Job role with this title already exists' 
@@ -157,8 +171,8 @@ router.put('/:id', auth, async (req, res) => {
 
     // Recalculate scores for all candidates if skills or other criteria changed
     if (requiredSkills || experienceLevel) {
-      const candidates = await Candidate.find({});
-      const jobRoles = await JobRole.find({ isActive: true });
+      const candidates = await Candidate.find({ createdBy: req.user.id });
+      const jobRoles = await JobRole.find({ isActive: true, createdBy: req.user.id });
 
       for (const candidate of candidates) {
         const candidateData = {
@@ -196,8 +210,14 @@ router.delete('/:id', adminAuth, async (req, res) => {
       return res.status(404).json({ message: 'Job role not found' });
     }
 
+    // Ownership check
+    if (String(jobRole.createdBy) !== String(req.user.id)) {
+      return res.status(404).json({ message: 'Job role not found' });
+    }
+
     // Check if any candidates are associated with this job role
     const candidateCount = await Candidate.countDocuments({
+      createdBy: req.user.id,
       $or: [
         { bestMatchJobRole: jobRole._id },
         { 'jobRoleScores.jobRole': jobRole._id }
@@ -279,9 +299,9 @@ router.post('/initialize-defaults', adminAuth, async (req, res) => {
     const createdJobRoles = [];
     
     for (const jobRoleData of defaultJobRoles) {
-      const existingJobRole = await JobRole.findOne({ title: jobRoleData.title });
+      const existingJobRole = await JobRole.findOne({ title: jobRoleData.title, createdBy: req.user.id });
       if (!existingJobRole) {
-        const jobRole = new JobRole(jobRoleData);
+        const jobRole = new JobRole({ ...jobRoleData, createdBy: req.user.id });
         await jobRole.save();
         createdJobRoles.push(jobRole);
       }

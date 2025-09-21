@@ -125,7 +125,88 @@ const parseResumeData = (text) => {
   return data;
 };
 
+// NEW: split a single document containing multiple resumes into chunks
+const splitMultipleResumes = (text) => {
+  if (!text || text.trim().length === 0) return [];
+
+  // Normalize newlines and whitespace
+  let normalized = text.replace(/\r\n?/g, '\n');
+
+  // Heuristics for boundaries:
+  // 1) Form feed (page breaks) from PDFs
+  // 2) Repeated email occurrences (each resume typically has exactly one email)
+  // 3) Common headers like "Curriculum Vitae", "Resume", "RESUME"
+  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+  const headerRegex = /(curriculum vitae|resume|bio-data|cv)/i;
+
+  // Try splitting by emails first
+  const emailMatches = [...normalized.matchAll(emailRegex)].map(m => ({ index: m.index || 0 }));
+
+  if (emailMatches.length <= 1) {
+    // Fallback: split by repeated headers (if present multiple times)
+    const headerIndices = [];
+    const lines = normalized.split('\n');
+    let runningIndex = 0;
+    for (const line of lines) {
+      if (headerRegex.test(line)) {
+        headerIndices.push(runningIndex);
+      }
+      runningIndex += line.length + 1; // +1 for newline
+    }
+
+    if (headerIndices.length <= 1) {
+      // No obvious multiple resumes; return as single
+      return [normalized];
+    }
+
+    const chunks = [];
+    for (let i = 0; i < headerIndices.length; i++) {
+      const start = headerIndices[i];
+      const end = i < headerIndices.length - 1 ? headerIndices[i + 1] : normalized.length;
+      const chunk = normalized.slice(start, end).trim();
+      if (chunk.length > 100) chunks.push(chunk);
+    }
+    return chunks;
+  }
+
+  // Build chunks around email boundaries. We try to cut a bit before the email at a paragraph break
+  const boundaries = [0];
+  for (let i = 1; i < emailMatches.length; i++) {
+    const idx = emailMatches[i].index;
+    // find previous double newline before this email to split cleanly
+    const before = normalized.lastIndexOf('\n\n', idx);
+    const boundary = before > boundaries[boundaries.length - 1] + 50 ? before : idx; // ensure some minimal distance
+    boundaries.push(boundary);
+  }
+  boundaries.push(normalized.length);
+
+  const chunks = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const start = boundaries[i];
+    const end = boundaries[i + 1];
+    const chunk = normalized.slice(start, end).trim();
+    if (chunk.length > 100) {
+      // Keep only chunks that look like resumes (must have at least an email)
+      if (emailRegex.test(chunk)) {
+        chunks.push(chunk);
+      }
+    }
+  }
+
+  // If our splitting somehow produced nothing, fallback to single
+  return chunks.length > 0 ? chunks : [normalized];
+};
+
+// NEW: convenience to parse multiple resumes from a single text
+const parseMultipleResumes = (text) => {
+  const chunks = splitMultipleResumes(text);
+  return chunks.map(parseResumeData);
+};
+
 module.exports = {
   extractTextFromFile,
-  parseResumeData
+  parseResumeData,
+  // new exports
+  splitMultipleResumes,
+  parseMultipleResumes,
 };

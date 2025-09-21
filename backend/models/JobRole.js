@@ -4,7 +4,6 @@ const jobRoleSchema = new mongoose.Schema({
   title: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
   description: {
@@ -35,9 +34,19 @@ const jobRoleSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Who owns this job role
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
   }
 }, {
   timestamps: true
 });
+
+// Ensure job role titles are unique per user
+jobRoleSchema.index({ title: 1, createdBy: 1 }, { unique: true });
 
 module.exports = mongoose.model('JobRole', jobRoleSchema);

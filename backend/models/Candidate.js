@@ -75,6 +75,13 @@ const candidateSchema = new mongoose.Schema({
     type: String,
     enum: ['new', 'reviewed', 'shortlisted', 'rejected', 'hired'],
     default: 'new'
+  },
+  // Who uploaded/owns this candidate
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
   }
 }, {
   timestamps: true

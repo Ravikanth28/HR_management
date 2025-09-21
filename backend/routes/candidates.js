@@ -24,7 +24,7 @@ router.get('/', auth, async (req, res) => {
     } = req.query;
 
     // Build filter object
-    const filter = {};
+    const filter = { createdBy: req.user.id };
     
     if (jobRole) {
       filter.bestMatchJobRole = jobRole;
@@ -95,6 +95,11 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Candidate not found' });
     }
 
+    // Ownership check
+    if (String(candidate.createdBy) !== String(req.user.id)) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+
     res.json({ candidate });
   } catch (error) {
     console.error('Get candidate error:', error);
@@ -116,6 +121,11 @@ router.patch('/:id/status', auth, async (req, res) => {
 
     const candidate = await Candidate.findById(req.params.id);
     if (!candidate) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+
+    // Ownership check
+    if (String(candidate.createdBy) !== String(req.user.id)) {
       return res.status(404).json({ message: 'Candidate not found' });
     }
 
@@ -141,6 +151,11 @@ router.get('/:id/resume', auth, async (req, res) => {
   try {
     const candidate = await Candidate.findById(req.params.id);
     if (!candidate) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+
+    // Ownership check
+    if (String(candidate.createdBy) !== String(req.user.id)) {
       return res.status(404).json({ message: 'Candidate not found' });
     }
 
@@ -170,6 +185,11 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Candidate not found' });
     }
 
+    // Ownership check
+    if (String(candidate.createdBy) !== String(req.user.id)) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+
     // Delete resume file
     if (fs.existsSync(candidate.resumePath)) {
       fs.unlinkSync(candidate.resumePath);
@@ -195,7 +215,8 @@ router.get('/grouped/by-job-role', auth, async (req, res) => {
     const groupedCandidates = await Promise.all(
       jobRoles.map(async (jobRole) => {
         const candidates = await Candidate.find({
-          bestMatchJobRole: jobRole._id
+          bestMatchJobRole: jobRole._id,
+          createdBy: req.user.id
         })
         .select('name email bestMatchScore status')
         .sort({ bestMatchScore: -1 })
@@ -209,7 +230,8 @@ router.get('/grouped/by-job-role', auth, async (req, res) => {
           },
           candidates,
           totalCount: await Candidate.countDocuments({
-            bestMatchJobRole: jobRole._id
+            bestMatchJobRole: jobRole._id,
+            createdBy: req.user.id
           })
         };
       })
@@ -225,66 +247,32 @@ router.get('/grouped/by-job-role', auth, async (req, res) => {
 // Get dashboard statistics
 router.get('/stats/dashboard', auth, async (req, res) => {
   try {
-    const totalCandidates = await Candidate.countDocuments();
+    const createdByMatch = { createdBy: req.user.id };
+    const totalCandidates = await Candidate.countDocuments(createdByMatch);
     const totalJobRoles = await JobRole.countDocuments({ isActive: true });
     
     const statusStats = await Candidate.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
+      { $match: { createdBy: new (require('mongoose')).Types.ObjectId(req.user.id) } },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
 
     const scoreDistribution = await Candidate.aggregate([
-      {
-        $bucket: {
-          groupBy: '$bestMatchScore',
-          boundaries: [0, 20, 40, 60, 80, 100],
-          default: 'other',
-          output: {
-            count: { $sum: 1 }
-          }
-        }
-      }
+      { $match: { createdBy: new (require('mongoose')).Types.ObjectId(req.user.id) } },
+      { $bucket: { groupBy: '$bestMatchScore', boundaries: [0, 20, 40, 60, 80, 100], default: 'other', output: { count: { $sum: 1 } } } }
     ]);
 
+    const mongoose = require('mongoose');
     const topJobRoles = await Candidate.aggregate([
-      {
-        $group: {
-          _id: '$bestMatchJobRole',
-          count: { $sum: 1 },
-          avgScore: { $avg: '$bestMatchScore' }
-        }
-      },
-      {
-        $lookup: {
-          from: 'jobroles',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'jobRole'
-        }
-      },
-      {
-        $unwind: '$jobRole'
-      },
-      {
-        $sort: { count: -1 }
-      },
-      {
-        $limit: 5
-      },
-      {
-        $project: {
-          jobRoleTitle: '$jobRole.title',
-          count: 1,
-          avgScore: { $round: ['$avgScore', 1] }
-        }
-      }
+      { $match: { createdBy: new mongoose.Types.ObjectId(req.user.id) } },
+      { $group: { _id: '$bestMatchJobRole', count: { $sum: 1 }, avgScore: { $avg: '$bestMatchScore' } } },
+      { $lookup: { from: 'jobroles', localField: '_id', foreignField: '_id', as: 'jobRole' } },
+      { $unwind: '$jobRole' },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+      { $project: { jobRoleTitle: '$jobRole.title', count: 1, avgScore: { $round: ['$avgScore', 1] } } }
     ]);
 
-    const recentCandidates = await Candidate.find()
+    const recentCandidates = await Candidate.find({ createdBy: req.user.id })
       .populate('bestMatchJobRole', 'title')
       .select('name email bestMatchScore status createdAt')
       .sort({ createdAt: -1 })
@@ -295,6 +283,7 @@ router.get('/stats/dashboard', auth, async (req, res) => {
         totalCandidates,
         totalJobRoles,
         avgScore: await Candidate.aggregate([
+          { $match: { createdBy: new (require('mongoose')).Types.ObjectId(req.user.id) } },
           { $group: { _id: null, avgScore: { $avg: '$bestMatchScore' } } }
         ]).then(result => result[0]?.avgScore ? Math.round(result[0].avgScore) : 0)
       },
