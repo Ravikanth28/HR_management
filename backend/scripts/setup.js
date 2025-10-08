@@ -15,23 +15,6 @@ const setupDatabase = async () => {
     });
     console.log('Connected to MongoDB');
 
-    // Create default admin user
-    const existingAdmin = await User.findOne({ email: 'admin@hrportal.com' });
-    if (!existingAdmin) {
-      const adminUser = new User({
-        username: 'admin',
-        email: 'admin@hrportal.com',
-        password: 'admin123',
-        role: 'admin'
-      });
-      await adminUser.save();
-      console.log('✅ Default admin user created');
-      console.log('   Email: admin@hrportal.com');
-      console.log('   Password: admin123');
-    } else {
-      console.log('ℹ️  Admin user already exists');
-    }
-
     // Create default HR user
     const existingHR = await User.findOne({ email: 'hr@hrportal.com' });
     if (!existingHR) {

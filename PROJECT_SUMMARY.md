@@ -15,7 +15,7 @@ I have successfully built a comprehensive full-stack HR Management Portal with a
 6. **Dashboard** - Comprehensive admin interface with analytics and management tools
 
 ### Additional Features ✓
-- **Authentication System** - JWT-based secure login for HR staff and admins
+- **Authentication System** - JWT-based secure login for HR staff
 - **Advanced Filtering** - Search and filter candidates by multiple criteria
 - **Resume Download** - Direct download of original resume files
 - **Real-time Statistics** - Dashboard analytics with charts and insights
@@ -94,7 +94,6 @@ The sophisticated ATS scoring system evaluates candidates based on:
 3. **Start Frontend**: Run `npm start` in frontend directory
 
 ### Default Credentials
-- **Admin**: admin@hrportal.com / admin123
 - **HR Staff**: hr@hrportal.com / hr123
 
 ### Test Deployment

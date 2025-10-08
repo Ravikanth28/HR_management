@@ -5,10 +5,10 @@ const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Register new user (admin only in production)
+// Register new user
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, role } = req.body;
+    const { username, email, password } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ 
@@ -21,12 +21,12 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Create new user
+    // Create new user (always HR role)
     const user = new User({
       username,
       email,
       password,
-      role: role || 'hr'
+      role: 'hr'
     });
 
     await user.save();

@@ -1,0 +1,18 @@
+Name: John Doe
+Role: Software Engineer
+Contact: john.doe@example.com | +1-555-0123 | New York, USA
+Summary:
+Experienced software engineer with 5 years of experience in web development using React and Node.js.
+
+Key Skills:
+- JavaScript, React, Node.js
+- HTML, CSS, MongoDB
+- Git, Docker, AWS
+
+Experience:
+Software Engineer — TechCorp (2020–Present)
+- Built web applications using React and Node.js
+- Improved application performance by 40%
+
+Education:
+B.S. Computer Science — University of Example (2016–2020)

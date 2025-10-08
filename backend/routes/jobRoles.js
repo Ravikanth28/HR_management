@@ -1,7 +1,7 @@
 const express = require('express');
 const JobRole = require('../models/JobRole');
 const Candidate = require('../models/Candidate');
-const { auth, adminAuth } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { calculateAllJobRoleScores } = require('../utils/atsScoring');
 
 const router = express.Router();
@@ -203,7 +203,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // Delete job role
-router.delete('/:id', adminAuth, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     const jobRole = await JobRole.findById(req.params.id);
     if (!jobRole) {
@@ -240,7 +240,7 @@ router.delete('/:id', adminAuth, async (req, res) => {
 });
 
 // Initialize default job roles
-router.post('/initialize-defaults', adminAuth, async (req, res) => {
+router.post('/initialize-defaults', auth, async (req, res) => {
   try {
     const defaultJobRoles = [
       {

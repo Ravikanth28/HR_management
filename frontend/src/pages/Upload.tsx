@@ -29,11 +29,11 @@ const Upload: React.FC = () => {
       const droppedFiles = Array.from(e.dataTransfer.files);
       const validFiles = droppedFiles.filter(file => {
         const extension = file.name.split('.').pop()?.toLowerCase();
-        return ['pdf', 'doc', 'docx'].includes(extension || '');
+        return ['pdf', 'doc', 'docx', 'txt'].includes(extension || '');
       });
 
       if (validFiles.length !== droppedFiles.length) {
-        toast.error('Some files were ignored. Only PDF, DOC, and DOCX files are allowed.');
+        toast.error('Some files were ignored. Only PDF, DOC, DOCX, and TXT files are allowed.');
       }
 
       setFiles(prev => [...prev, ...validFiles]);
@@ -149,7 +149,7 @@ const Upload: React.FC = () => {
                     name="file-upload"
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.doc,.docx,.txt"
                     className="sr-only"
                     onChange={handleFileSelect}
                   />
@@ -311,7 +311,7 @@ const Upload: React.FC = () => {
           Upload Instructions
         </h3>
         <ul className="text-sm text-blue-700 space-y-1">
-          <li>• Supported formats: PDF, DOC, DOCX</li>
+          <li>• Supported formats: PDF, DOC, DOCX, TXT</li>
           <li>• Maximum file size: 10MB per file</li>
           <li>• You can upload multiple files at once</li>
           <li>• Resumes will be automatically parsed and scored against job roles</li>

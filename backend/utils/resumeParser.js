@@ -61,21 +61,56 @@ const parseResumeData = (text) => {
     data.phone = phoneMatch[0];
   }
 
-  // Extract name (usually the first line or before email)
-  const lines = text.split('\n').filter(line => line.trim().length > 0);
-  if (lines.length > 0) {
-    // Try to find name before email or use first meaningful line
-    const nameRegex = /^[A-Za-z\s]{2,50}$/;
-    for (let i = 0; i < Math.min(5, lines.length); i++) {
-      const line = lines[i].trim();
-      if (nameRegex.test(line) && !line.includes('@') && line.length > 2) {
-        data.name = line;
+  // Extract name - handle structured format like "Name: John Doe"
+  const namePatterns = [
+    // Pattern 1: "Name: [Name]"
+    /Name:\s*([^\n\r]+)/i,
+    // Pattern 2: First line that looks like a name (fallback)
+    /^[A-Za-z\s]{2,50}$/
+  ];
+
+  for (const pattern of namePatterns) {
+    if (pattern.test && typeof pattern.test === 'function') {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        data.name = match[1].trim();
         break;
       }
+    } else {
+      // Handle regex pattern
+      const lines = text.split('\n').filter(line => line.trim().length > 0);
+      for (let i = 0; i < Math.min(5, lines.length); i++) {
+        const line = lines[i].trim();
+        if (pattern.test(line) && !line.includes('@') && line.length > 2) {
+          data.name = line;
+          break;
+        }
+      }
+    }
+    if (data.name) break;
+  }
+
+  // Extract skills - handle structured format like "Key Skills:" sections
+  const skillPatterns = [
+    // Pattern 1: "Key Skills:" section
+    /Key Skills:[\s]*\n([\s\S]*?)(?=\n\s*\n|$)/i,
+    // Pattern 2: Common programming languages and technologies (fallback)
+  ];
+
+  let skillsText = '';
+  for (const pattern of skillPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      skillsText = match[1];
+      break;
     }
   }
 
-  // Extract skills (common programming languages and technologies)
+  if (!skillsText) {
+    skillsText = text; // Fallback to entire text
+  }
+
+  // Expanded skill keywords
   const skillKeywords = [
     'javascript', 'python', 'java', 'react', 'node.js', 'angular', 'vue',
     'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql', 'git',
@@ -83,10 +118,12 @@ const parseResumeData = (text) => {
     'machine learning', 'data analysis', 'excel', 'powerbi', 'tableau',
     'photoshop', 'illustrator', 'figma', 'sketch', 'ui/ux', 'design',
     'marketing', 'seo', 'content writing', 'social media', 'analytics',
-    'project management', 'agile', 'scrum', 'leadership', 'communication'
+    'project management', 'agile', 'scrum', 'leadership', 'communication',
+    'django', 'spring boot', 'flask', 'express', 'fastapi', 'rest apis',
+    'microservices', 'tdd', 'ci/cd', 'devops', 'linux', 'bash', 'powershell'
   ];
 
-  const textLower = text.toLowerCase();
+  const textLower = skillsText.toLowerCase();
   skillKeywords.forEach(skill => {
     if (textLower.includes(skill.toLowerCase())) {
       data.skills.push(skill);
@@ -96,31 +133,58 @@ const parseResumeData = (text) => {
   // Remove duplicates
   data.skills = [...new Set(data.skills)];
 
-  // Extract experience years (simple heuristic)
-  const experienceRegex = /(\d+)[\s]*(?:years?|yrs?)[\s]*(?:of\s*)?(?:experience|exp)/gi;
-  const expMatch = text.match(experienceRegex);
-  if (expMatch) {
-    const years = expMatch.map(match => {
-      const num = match.match(/\d+/);
-      return num ? parseInt(num[0]) : 0;
-    });
-    data.experience.years = Math.max(...years);
+  // Extract experience years - handle structured format
+  const experiencePatterns = [
+    // Pattern 1: "years" or "yrs" mentions
+    /(\d+)[\s]*(?:years?|yrs?)[\s]*(?:of\s*)?(?:experience|exp)/gi,
+    // Pattern 2: Look for year numbers in context
+    /experience:[\s]*(\d+)[\s]*years?/gi
+  ];
+
+  for (const pattern of experiencePatterns) {
+    const expMatch = text.match(pattern);
+    if (expMatch) {
+      const years = expMatch.map(match => {
+        const num = match.match(/\d+/);
+        return num ? parseInt(num[0]) : 0;
+      }).filter(year => year > 0);
+      if (years.length > 0) {
+        data.experience.years = Math.max(...years);
+        break;
+      }
+    }
   }
 
-  // Extract education (simple pattern matching)
-  const educationKeywords = ['bachelor', 'master', 'phd', 'degree', 'university', 'college', 'institute'];
-  const educationLines = lines.filter(line => {
-    const lineLower = line.toLowerCase();
-    return educationKeywords.some(keyword => lineLower.includes(keyword));
-  });
+  // Extract education - handle structured format
+  const educationPatterns = [
+    // Pattern 1: "Education:" section
+    /Education:[\s]*\n([\s\S]*?)(?=\n\s*\n|$)/i,
+    // Pattern 2: Look for degree keywords
+  ];
 
-  educationLines.forEach(line => {
-    data.education.push({
-      degree: line.trim(),
-      institution: '',
-      year: ''
+  let educationText = '';
+  for (const pattern of educationPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      educationText = match[1];
+      break;
+    }
+  }
+
+  if (educationText) {
+    const educationKeywords = ['bachelor', 'master', 'phd', 'degree', 'university', 'college', 'institute', 'mba', 'b.tech', 'm.tech'];
+    const eduLines = educationText.split('\n').filter(line =>
+      educationKeywords.some(keyword => line.toLowerCase().includes(keyword))
+    );
+
+    eduLines.forEach(line => {
+      data.education.push({
+        degree: line.trim(),
+        institution: '',
+        year: ''
+      });
     });
-  });
+  }
 
   return data;
 };
@@ -135,9 +199,9 @@ const splitMultipleResumes = (text) => {
   // Heuristics for boundaries:
   // 1) Form feed (page breaks) from PDFs
   // 2) Repeated email occurrences (each resume typically has exactly one email)
-  // 3) Common headers like "Curriculum Vitae", "Resume", "RESUME"
+  // 3) Common headers like "Name:", "Role:", "Contact:"
   const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-  const headerRegex = /(curriculum vitae|resume|bio-data|cv)/i;
+  const headerRegex = /(Name:|Role:|Contact:)/i;
 
   // Try splitting by emails first
   const emailMatches = [...normalized.matchAll(emailRegex)].map(m => ({ index: m.index || 0 }));
@@ -160,9 +224,9 @@ const splitMultipleResumes = (text) => {
     }
 
     const chunks = [];
-    for (let i = 0; i < headerIndices.length; i++) {
+    for (let i = 0; i < headerIndices.length; i += 3) { // Group by 3 headers (Name, Role, Contact)
       const start = headerIndices[i];
-      const end = i < headerIndices.length - 1 ? headerIndices[i + 1] : normalized.length;
+      const end = i + 3 < headerIndices.length ? headerIndices[i + 3] : normalized.length;
       const chunk = normalized.slice(start, end).trim();
       if (chunk.length > 100) chunks.push(chunk);
     }
@@ -186,8 +250,8 @@ const splitMultipleResumes = (text) => {
     const end = boundaries[i + 1];
     const chunk = normalized.slice(start, end).trim();
     if (chunk.length > 100) {
-      // Keep only chunks that look like resumes (must have at least an email)
-      if (emailRegex.test(chunk)) {
+      // Keep only chunks that look like resumes (must have at least an email or name pattern)
+      if (emailRegex.test(chunk) || headerRegex.test(chunk)) {
         chunks.push(chunk);
       }
     }

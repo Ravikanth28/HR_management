@@ -26,13 +26,13 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['.pdf', '.doc', '.docx'];
+  const allowedTypes = ['.pdf', '.doc', '.docx', '.txt'];
   const fileExt = path.extname(file.originalname).toLowerCase();
   
   if (allowedTypes.includes(fileExt)) {
     cb(null, true);
   } else {
-    cb(new Error('Only PDF, DOC, and DOCX files are allowed'), false);
+    cb(new Error('Only PDF, DOC, DOCX, and TXT files are allowed'), false);
   }
 };
 
@@ -55,7 +55,15 @@ router.post('/resume', auth, upload.single('resume'), async (req, res) => {
     const fileExt = path.extname(req.file.originalname).toLowerCase().substring(1);
 
     // Extract text from resume
-    const extractedText = await extractTextFromFile(filePath, fileExt);
+    let extractedText;
+
+    // Handle text files differently - read directly as text
+    if (fileExt === 'txt') {
+      extractedText = fs.readFileSync(filePath, 'utf8');
+    } else {
+      // Extract text from binary formats (PDF, DOC, DOCX)
+      extractedText = await extractTextFromFile(filePath, fileExt);
+    }
     
     if (!extractedText || extractedText.trim().length === 0) {
       // Clean up uploaded file
@@ -167,7 +175,15 @@ router.post('/bulk-resumes', auth, upload.array('resumes', 10), async (req, res)
         const fileExt = path.extname(file.originalname).toLowerCase().substring(1);
 
         // Extract text from resume file
-        const extractedText = await extractTextFromFile(filePath, fileExt);
+        let extractedText;
+
+        // Handle text files differently - read directly as text
+        if (fileExt === 'txt') {
+          extractedText = fs.readFileSync(filePath, 'utf8');
+        } else {
+          // Extract text from binary formats (PDF, DOC, DOCX)
+          extractedText = await extractTextFromFile(filePath, fileExt);
+        }
         
         if (!extractedText || extractedText.trim().length === 0) {
           fs.unlinkSync(filePath);
@@ -180,6 +196,7 @@ router.post('/bulk-resumes', auth, upload.array('resumes', 10), async (req, res)
 
         // NEW: split single file that contains multiple resumes
         const chunks = splitMultipleResumes(extractedText);
+        console.log(`Found ${chunks.length} resume chunks in ${file.originalname}`);
 
         if (chunks.length === 0) {
           fs.unlinkSync(filePath);
@@ -193,11 +210,16 @@ router.post('/bulk-resumes', auth, upload.array('resumes', 10), async (req, res)
         let createdAtLeastOne = false;
         for (let idx = 0; idx < chunks.length; idx++) {
           const chunkText = chunks[idx];
+          console.log(`Processing chunk ${idx + 1}/${chunks.length} for ${file.originalname}`);
+
           const candidateData = parseResumeData(chunkText);
           candidateData.extractedText = chunkText;
 
+          console.log(`Parsed candidate: ${candidateData.name} - ${candidateData.email}`);
+
           // Validate required fields in each chunk
           if (!candidateData.name || !candidateData.email) {
+            console.log(`Skipping chunk ${idx + 1} - missing name or email`);
             results.failed.push({
               filename: `${file.originalname} (section ${idx + 1})`,
               error: 'Could not extract required information (name, email)'
@@ -206,11 +228,12 @@ router.post('/bulk-resumes', auth, upload.array('resumes', 10), async (req, res)
           }
 
           // Check duplicate by email (scoped by user)
-          const existingCandidate = await Candidate.findOne({ 
+          const existingCandidate = await Candidate.findOne({
             email: candidateData.email,
             createdBy: req.user.id
           });
           if (existingCandidate) {
+            console.log(`Skipping chunk ${idx + 1} - duplicate email: ${candidateData.email}`);
             results.failed.push({
               filename: `${file.originalname} (section ${idx + 1})`,
               error: 'Candidate with this email already exists'
@@ -239,6 +262,7 @@ router.post('/bulk-resumes', auth, upload.array('resumes', 10), async (req, res)
 
           await candidate.save();
           createdAtLeastOne = true;
+          console.log(`✅ Saved candidate: ${candidate.name} (${candidate.email})`);
 
           results.successful.push({
             filename: `${file.originalname} (section ${idx + 1})`,
