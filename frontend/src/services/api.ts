@@ -134,6 +134,11 @@ export const candidatesAPI = {
     const response = await api.get('/candidates/stats/dashboard');
     return response.data as DashboardStats;
   },
+
+  getDemoDashboardStats: async () => {
+    const response = await api.get('/candidates/stats/demo-dashboard');
+    return response.data as DashboardStats & { _demoMode: boolean; _message: string };
+  },
 };
 
 // Upload API

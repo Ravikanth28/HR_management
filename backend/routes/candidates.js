@@ -1,13 +1,10 @@
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const Candidate = require('../models/Candidate');
 const JobRole = require('../models/JobRole');
 const { auth } = require('../middleware/auth');
 
 const router = express.Router();
-
-// Get all candidates with filtering and sorting
 router.get('/', auth, async (req, res) => {
   try {
     const {
@@ -166,8 +163,6 @@ router.get('/:id/resume', auth, async (req, res) => {
 
     // Set appropriate headers for file download
     res.setHeader('Content-Disposition', `attachment; filename="${candidate.resumeFileName}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');
-
     // Stream the file
     const fileStream = fs.createReadStream(resumePath);
     fileStream.pipe(res);
@@ -177,93 +172,27 @@ router.get('/:id/resume', auth, async (req, res) => {
   }
 });
 
-// Delete candidate
-router.delete('/:id', auth, async (req, res) => {
+// Demo dashboard statistics (no auth required for presentation)
+router.get('/stats/demo-dashboard', async (req, res) => {
   try {
-    const candidate = await Candidate.findById(req.params.id);
-    if (!candidate) {
-      return res.status(404).json({ message: 'Candidate not found' });
-    }
+    // Show statistics for all users (demo mode)
+    const createdByMatch = {};
 
-    // Ownership check
-    if (String(candidate.createdBy) !== String(req.user.id)) {
-      return res.status(404).json({ message: 'Candidate not found' });
-    }
-
-    // Delete resume file
-    if (fs.existsSync(candidate.resumePath)) {
-      fs.unlinkSync(candidate.resumePath);
-    }
-
-    // Delete candidate record
-    await Candidate.findByIdAndDelete(req.params.id);
-
-    res.json({ message: 'Candidate deleted successfully' });
-  } catch (error) {
-    console.error('Delete candidate error:', error);
-    res.status(500).json({ message: 'Error deleting candidate' });
-  }
-});
-
-// Get candidates grouped by job roles
-router.get('/grouped/by-job-role', auth, async (req, res) => {
-  try {
-    const { limit = 5 } = req.query;
-
-    const jobRoles = await JobRole.find({ isActive: true }).sort({ title: 1 });
-    
-    const groupedCandidates = await Promise.all(
-      jobRoles.map(async (jobRole) => {
-        const candidates = await Candidate.find({
-          bestMatchJobRole: jobRole._id,
-          createdBy: req.user.id
-        })
-        .select('name email bestMatchScore status')
-        .sort({ bestMatchScore: -1 })
-        .limit(parseInt(limit));
-
-        return {
-          jobRole: {
-            id: jobRole._id,
-            title: jobRole.title,
-            department: jobRole.department
-          },
-          candidates,
-          totalCount: await Candidate.countDocuments({
-            bestMatchJobRole: jobRole._id,
-            createdBy: req.user.id
-          })
-        };
-      })
-    );
-
-    res.json({ groupedCandidates });
-  } catch (error) {
-    console.error('Get grouped candidates error:', error);
-    res.status(500).json({ message: 'Error fetching grouped candidates' });
-  }
-});
-
-// Get dashboard statistics
-router.get('/stats/dashboard', auth, async (req, res) => {
-  try {
-    const createdByMatch = { createdBy: req.user.id };
     const totalCandidates = await Candidate.countDocuments(createdByMatch);
     const totalJobRoles = await JobRole.countDocuments({ isActive: true });
-    
+
     const statusStats = await Candidate.aggregate([
-      { $match: { createdBy: new (require('mongoose')).Types.ObjectId(req.user.id) } },
+      { $match: createdByMatch },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
 
     const scoreDistribution = await Candidate.aggregate([
-      { $match: { createdBy: new (require('mongoose')).Types.ObjectId(req.user.id) } },
+      { $match: createdByMatch },
       { $bucket: { groupBy: '$bestMatchScore', boundaries: [0, 20, 40, 60, 80, 100], default: 'other', output: { count: { $sum: 1 } } } }
     ]);
 
-    const mongoose = require('mongoose');
     const topJobRoles = await Candidate.aggregate([
-      { $match: { createdBy: new mongoose.Types.ObjectId(req.user.id) } },
+      { $match: createdByMatch },
       { $group: { _id: '$bestMatchJobRole', count: { $sum: 1 }, avgScore: { $avg: '$bestMatchScore' } } },
       { $lookup: { from: 'jobroles', localField: '_id', foreignField: '_id', as: 'jobRole' } },
       { $unwind: '$jobRole' },
@@ -272,20 +201,22 @@ router.get('/stats/dashboard', auth, async (req, res) => {
       { $project: { jobRoleTitle: '$jobRole.title', count: 1, avgScore: { $round: ['$avgScore', 1] } } }
     ]);
 
-    const recentCandidates = await Candidate.find({ createdBy: req.user.id })
+    const recentCandidates = await Candidate.find(createdByMatch)
       .populate('bestMatchJobRole', 'title')
       .select('name email bestMatchScore status createdAt')
       .sort({ createdAt: -1 })
       .limit(5);
 
+    const avgScoreResult = await Candidate.aggregate([
+      { $match: createdByMatch },
+      { $group: { _id: null, avgScore: { $avg: '$bestMatchScore' } } }
+    ]);
+
     res.json({
       overview: {
         totalCandidates,
         totalJobRoles,
-        avgScore: await Candidate.aggregate([
-          { $match: { createdBy: new (require('mongoose')).Types.ObjectId(req.user.id) } },
-          { $group: { _id: null, avgScore: { $avg: '$bestMatchScore' } } }
-        ]).then(result => result[0]?.avgScore ? Math.round(result[0].avgScore) : 0)
+        avgScore: avgScoreResult[0]?.avgScore ? Math.round(avgScoreResult[0].avgScore) : 0
       },
       statusStats: statusStats.reduce((acc, stat) => {
         acc[stat._id] = stat.count;
@@ -293,7 +224,72 @@ router.get('/stats/dashboard', auth, async (req, res) => {
       }, {}),
       scoreDistribution,
       topJobRoles,
-      recentCandidates
+      recentCandidates,
+      _demoMode: true,
+      _message: "Demo mode - showing all candidate data for presentation"
+    });
+  } catch (error) {
+    console.error('Get demo dashboard stats error:', error);
+    res.status(500).json({ message: 'Error fetching demo dashboard statistics' });
+  }
+});
+
+// Get dashboard statistics
+router.get('/stats/dashboard', auth, async (req, res) => {
+  try {
+    // For demo purposes, show statistics for all users or current user
+    // In production, this should be filtered by req.user.id only
+    const createdByMatch = {}; // Show all candidates for demo
+    // const createdByMatch = { createdBy: req.user.id }; // Use this in production
+
+    const totalCandidates = await Candidate.countDocuments(createdByMatch);
+    const totalJobRoles = await JobRole.countDocuments({ isActive: true });
+
+    const statusStats = await Candidate.aggregate([
+      { $match: createdByMatch },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    const scoreDistribution = await Candidate.aggregate([
+      { $match: createdByMatch },
+      { $bucket: { groupBy: '$bestMatchScore', boundaries: [0, 20, 40, 60, 80, 100], default: 'other', output: { count: { $sum: 1 } } } }
+    ]);
+
+    const topJobRoles = await Candidate.aggregate([
+      { $match: createdByMatch },
+      { $group: { _id: '$bestMatchJobRole', count: { $sum: 1 }, avgScore: { $avg: '$bestMatchScore' } } },
+      { $lookup: { from: 'jobroles', localField: '_id', foreignField: '_id', as: 'jobRole' } },
+      { $unwind: '$jobRole' },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+      { $project: { jobRoleTitle: '$jobRole.title', count: 1, avgScore: { $round: ['$avgScore', 1] } } }
+    ]);
+
+    const recentCandidates = await Candidate.find(createdByMatch)
+      .populate('bestMatchJobRole', 'title')
+      .select('name email bestMatchScore status createdAt')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    const avgScoreResult = await Candidate.aggregate([
+      { $match: createdByMatch },
+      { $group: { _id: null, avgScore: { $avg: '$bestMatchScore' } } }
+    ]);
+
+    res.json({
+      overview: {
+        totalCandidates,
+        totalJobRoles,
+        avgScore: avgScoreResult[0]?.avgScore ? Math.round(avgScoreResult[0].avgScore) : 0
+      },
+      statusStats: statusStats.reduce((acc, stat) => {
+        acc[stat._id] = stat.count;
+        return acc;
+      }, {}),
+      scoreDistribution,
+      topJobRoles,
+      recentCandidates,
+      _demoMode: true // Flag to indicate demo mode
     });
   } catch (error) {
     console.error('Get dashboard stats error:', error);

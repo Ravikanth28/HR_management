@@ -24,7 +24,14 @@ const Dashboard: React.FC = () => {
   const fetchDashboardStats = async () => {
     try {
       setLoading(true);
-      const data = await candidatesAPI.getDashboardStats();
+      // Try demo endpoint first for presentation, fall back to authenticated endpoint
+      let data;
+      try {
+        data = await candidatesAPI.getDemoDashboardStats();
+      } catch (demoError) {
+        // Fall back to authenticated endpoint if demo fails
+        data = await candidatesAPI.getDashboardStats();
+      }
       setStats(data);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);

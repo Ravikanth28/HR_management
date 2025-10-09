@@ -136,15 +136,6 @@ export interface BulkUploadResponse {
   results: UploadResult;
 }
 
-export interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string, role?: string) => Promise<void>;
-  logout: () => void;
-  loading: boolean;
-}
-
 export interface CandidateFilters {
   page?: number;
   limit?: number;
@@ -156,4 +147,13 @@ export interface CandidateFilters {
   skills?: string;
   status?: string;
   search?: string;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string, role?: string) => Promise<void>;
+  logout: () => void;
+  loading: boolean;
 }
