@@ -20,14 +20,13 @@ router.get('/', auth, async (req, res) => {
       search
     } = req.query;
 
-    // Build filter object
     const filter = { createdBy: req.user.id };
     
     if (jobRole) {
       filter.bestMatchJobRole = jobRole;
     }
     
-    if (minScore || maxScore) {
+    if (minScore || maxScore) {w
       filter.bestMatchScore = {};
       if (minScore) filter.bestMatchScore.$gte = parseInt(minScore);
       if (maxScore) filter.bestMatchScore.$lte = parseInt(maxScore);
